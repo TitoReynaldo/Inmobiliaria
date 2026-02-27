@@ -1,0 +1,53 @@
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace Inmobiliaria.API.DTOs.Simulacion
+{
+    public class SimulacionInputDto
+    {
+        [Required]
+        [Range(1, double.MaxValue, ErrorMessage = "El precio de la vivienda debe ser mayor a 0.")]
+        public decimal PrecioVivienda { get; set; }
+
+        [Required]
+        [Range(0, double.MaxValue, ErrorMessage = "La cuota inicial no puede ser negativa.")]
+        public decimal CuotaInicial { get; set; }
+
+        [Required]
+        [Range(1, 100, ErrorMessage = "La tasa de interés debe estar entre 1% y 100%.")]
+        public decimal TasaInteres { get; set; }
+
+        [Required]
+        [RegularExpression("^(Nominal|Efectiva)$", ErrorMessage = "El tipo de tasa debe ser 'Nominal' o 'Efectiva'.")]
+        public string TipoTasa { get; set; } = "Efectiva";
+
+        public string Moneda { get; set; } = "PEN";
+
+        public int PlazoAnios { get; set; } = 0;
+
+        [RegularExpression("^(Sin Gracia|Parcial|Total)$", ErrorMessage = "Tipo de gracia inválido.")]
+        public string TipoGracia { get; set; } = "Sin Gracia";
+
+        [Range(0, 12, ErrorMessage = "El periodo de gracia no puede exceder los 12 meses.")]
+        public int MesesGracia { get; set; } = 0;
+
+        public bool AplicaBonoBuenPagador { get; set; } = false;
+        public bool AplicaBonoVerde { get; set; } = false;
+
+        public decimal ValorTasacion { get; set; }
+        public decimal CuotaInicialPorcentaje { get; set; }
+        public int DiasPorPeriodo { get; set; } = 30;
+        public int DiasPorAnio { get; set; } = 360;
+        public int PlazoMeses { get; set; }
+
+        public decimal CostesNotariales { get; set; } = 0;
+        public decimal CostesRegistrales { get; set; } = 0;
+        public decimal Tasacion { get; set; } = 0;
+        public decimal ComisionActivacion { get; set; } = 0;
+
+        public decimal Portes { get; set; } = 0;
+        public decimal GastosAdministracion { get; set; } = 0;
+        public decimal SeguroDesgravamenMensual { get; set; } = 0;
+        public decimal SeguroRiesgoMensual { get; set; } = 0;
+        public decimal TasaDescuento { get; set; } = 10;
+    }
+}
