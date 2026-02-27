@@ -25,7 +25,6 @@ namespace Inmobiliaria.API.Services
 
             double montoPrestamo = (double)(input.PrecioVivienda - (input.PrecioVivienda * (input.CuotaInicialPorcentaje / 100)));
 
-            // Lógica dinámica de Bonos desde Base de Datos
             if (input.AplicaBonoBuenPagador)
             {
                 var bono = await _context.Maestrobonos
@@ -39,7 +38,7 @@ namespace Inmobiliaria.API.Services
 
             if (input.AplicaBonoVerde)
             {
-                // El Bono Verde se asume que viene sumado en el MontoBono del Maestro
+         
             }
 
             double gastosIniciales = (double)(input.CostesNotariales + input.CostesRegistrales + input.Tasacion);
@@ -144,8 +143,8 @@ namespace Inmobiliaria.API.Services
                 double van = 0;
                 double derivada = 0;
                 for (int t = 0; t < flujos.Count; t++)
-                {
-                    double factor = Math.Pow(1 + tir, t);
+                { 
+                    double factor = Math.Pow(1 + tir, t);//TRAS
                     van += flujos[t] / factor;
                     if (t > 0)
                     {

@@ -67,7 +67,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// app.UseHttpsRedirection(); // Desactivado temporalmente para evitar bloqueos CORS en desarrollo local HTTP
+// app.UseHttpsRedirection();
 
 app.UseCors("PermitirFrontend");
 

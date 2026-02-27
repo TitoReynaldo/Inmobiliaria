@@ -144,7 +144,7 @@ public partial class InmobiliariaContext : DbContext
             entity.Property(e => e.CuotaInicial).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.FechaSimulacion)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
-                .HasColumnType("datetime");
+                .HasColumnType("datetime");//TRAS
             entity.Property(e => e.MesesGracia).HasDefaultValueSql("'0'");
             entity.Property(e => e.MontoPrestamo).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.PrecioVenta).HasColumnType("decimal(30, 15)");

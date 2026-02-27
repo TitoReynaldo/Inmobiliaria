@@ -21,7 +21,7 @@ Sistema Fullstack de simulación financiera hipotecaria basado en el Método de 
 
 ### 1. Motor de Base de Datos (MySQL)
 1.  Localizar el script de aprovisionamiento en: `database/InmobiliariaDB.sql`.
-2.  Ejecutar el script en su servidor MySQL local para generar el esquema `InmobiliariaDB` e inyectar los datos semilla de configuración financiera.
+2.  Ejecutar el script en su servidor MySQL local para generar el esquema `InmobiliariaDB` e inyectar los datos semilla de configuración financiera TRAS la instalacion.
 
 ### 2. Capa Backend (.NET 10)
 
