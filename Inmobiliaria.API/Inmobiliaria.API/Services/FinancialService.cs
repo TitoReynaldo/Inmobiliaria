@@ -1,182 +1,330 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Excel.FinancialFunctions;
+using System.Threading.Tasks;
 using Inmobiliaria.API.DTOs.Simulacion;
+using Inmobiliaria.API.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Inmobiliaria.API.Services
 {
     public class FinancialService : IFinancialService
     {
-        public SimulacionResultDto CalcularSimulacion(SimulacionInputDto input)
+        private readonly InmobiliariaContext _context;
+        private const int MaxIter = 1000;
+        private const double Epsilon = 1e-7;
+
+        public FinancialService(InmobiliariaContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<SimulacionResultDto> CalcularSimulacion(SimulacionInputDto input)
         {
             var resultado = new SimulacionResultDto();
 
-            decimal montoPrestamo = input.PrecioVivienda - (input.PrecioVivienda * (input.CuotaInicialPorcentaje / 100));
+            double montoPrestamo = (double)(input.PrecioVivienda - (input.PrecioVivienda * (input.CuotaInicialPorcentaje / 100)));
 
+            // Lógica dinámica de Bonos desde Base de Datos
             if (input.AplicaBonoBuenPagador)
             {
-                montoPrestamo -= 25700m;
+                var bono = await _context.Maestrobonos
+                    .FirstOrDefaultAsync(b => input.PrecioVivienda >= b.PrecioViviendaDesde && input.PrecioVivienda <= b.PrecioViviendaHasta);
+                
+                if (bono != null)
+                {
+                    montoPrestamo -= (double)bono.MontoBono;
+                }
             }
+
             if (input.AplicaBonoVerde)
             {
-                montoPrestamo -= 5400m;
+                // El Bono Verde se asume que viene sumado en el MontoBono del Maestro
             }
 
-            decimal gastosIniciales = input.CostesNotariales + input.CostesRegistrales + input.Tasacion + input.ComisionActivacion;
+            double gastosIniciales = (double)(input.CostesNotariales + input.CostesRegistrales + input.Tasacion);
 
-            if (input.DiasPorPeriodo <= 0) input.DiasPorPeriodo = 30;
-            if (input.DiasPorAnio <= 0) input.DiasPorAnio = 360;
-            decimal periodosPorAnio = (decimal)input.DiasPorAnio / input.DiasPorPeriodo;
-            decimal tea = input.TipoTasa == "Nominal"
+            int diasPorPeriodo = input.DiasPorPeriodo <= 0 ? 30 : input.DiasPorPeriodo;
+            int diasPorAnio = input.DiasPorAnio <= 0 ? 360 : input.DiasPorAnio;
+            double periodosPorAnio = (double)diasPorAnio / diasPorPeriodo;
+
+            double tea = (double)(input.TipoTasa == "Nominal"
                 ? ConvertirTasaNominalAEfectiva(input.TasaInteres / 100, periodosPorAnio)
-                : input.TasaInteres / 100;
+                : input.TasaInteres / 100);
 
-            resultado.TEA = tea;
+            resultado.TEA = (decimal)Math.Round(tea, 15);
 
-            decimal tem = (decimal)Math.Pow((double)(1 + tea), (double)input.DiasPorPeriodo / input.DiasPorAnio) - 1;
+            double tem = Math.Pow(1 + tea, (double)diasPorPeriodo / diasPorAnio) - 1;
 
-            decimal tasaDesgravamen = input.SeguroDesgravamenMensual / 100m;
-            decimal montoSeguroRiesgo = input.ValorTasacion * (input.SeguroRiesgoMensual / 100m);
+            double tasaDesgravamen = (double)(input.SeguroDesgravamenMensual / 100m);
+            double montoSeguroRiesgo = (double)(input.ValorTasacion * (input.SeguroRiesgoMensual / 100m));
+            double dPortes = (double)input.Portes;
+            double dGastosAdmin = (double)input.GastosAdministracion;
+
+            int totalCuotas = input.PlazoMeses > 0 ? input.PlazoMeses : input.PlazoAnios * 12;
+
+            if (input.TipoGracia != "Sin Gracia" && input.MesesGracia >= totalCuotas)
+            {
+                throw new InvalidOperationException($"El periodo de gracia ({input.MesesGracia} meses) no puede ser mayor o igual al plazo total del crédito ({totalCuotas} meses).");
+            }
 
             resultado.Cronograma = GenerarCronogramaFrances(
-                montoPrestamo,
-                tem,
-                input.PlazoMeses > 0 ? input.PlazoMeses : input.PlazoAnios * 12,
-                input.TipoGracia,
-                input.MesesGracia,
-                tasaDesgravamen,
-                montoSeguroRiesgo,
-                input.Portes,
-                input.GastosAdministracion
+                montoPrestamo, tem,
+                totalCuotas,
+                input.TipoGracia, input.MesesGracia,
+                tasaDesgravamen, montoSeguroRiesgo, dPortes, dGastosAdmin,
+                input.PagosAnticipados, input.TipoPrepago
             );
 
-            resultado.TotalAmortizacion = resultado.Cronograma.Sum(x => x.Amortizacion);
-            resultado.TotalIntereses = resultado.Cronograma.Sum(x => x.Interes);
-            resultado.TotalSeguros = resultado.Cronograma.Sum(x => x.SegDesgravamen + x.SeguroRiesgo);
-            resultado.TotalPortes = resultado.Cronograma.Sum(x => x.Portes);
-            resultado.TotalGastosAdmin = resultado.Cronograma.Sum(x => x.GastosAdministracion);
+            if (resultado.Cronograma.Any()) {
+                var cuotaRepresentativa = resultado.Cronograma.FirstOrDefault(c => c.Amortizacion > 0) ?? resultado.Cronograma.Last();
+                resultado.CuotaMensualReferencial = Math.Round(cuotaRepresentativa.CuotaTotal - cuotaRepresentativa.SegDesgravamen - cuotaRepresentativa.SeguroRiesgo - cuotaRepresentativa.Portes - cuotaRepresentativa.GastosAdministracion, 15);
+            }
 
-            var flujoCaja = new List<double>();
-            flujoCaja.Add((double)-(montoPrestamo - gastosIniciales));
-            flujoCaja.AddRange(resultado.Cronograma.Select(x => (double)x.CuotaTotal));
+            resultado.TotalAmortizacion = (decimal)Math.Round((double)resultado.Cronograma.Sum(x => x.Amortizacion), 15);
+            resultado.TotalIntereses = (decimal)Math.Round((double)resultado.Cronograma.Sum(x => x.Interes), 15);
+            resultado.TotalSeguros = (decimal)Math.Round((double)resultado.Cronograma.Sum(x => x.SegDesgravamen + x.SeguroRiesgo), 15);
+            resultado.TotalPortes = (decimal)Math.Round((double)resultado.Cronograma.Sum(x => x.Portes), 15);
+            resultado.TotalGastosAdmin = (decimal)Math.Round((double)resultado.Cronograma.Sum(x => x.GastosAdministracion), 15);
 
-            double tirMensual = Financial.Irr(flujoCaja, 0.01);
-            resultado.TIR = (decimal)tirMensual;
+            var flujosCaja = new List<double> { -(montoPrestamo - gastosIniciales) };
+            flujosCaja.AddRange(resultado.Cronograma.Select(p => (double)p.CuotaTotal));
 
-            resultado.TCEA = (decimal)(Math.Pow(1 + tirMensual, (double)input.DiasPorAnio / input.DiasPorPeriodo) - 1);
+            double tirMensual = CalcularTIRnativo(flujosCaja);
+            
+            if (double.IsNaN(tirMensual))
+            {
+                resultado.TIR = 0m;
+                resultado.TCEA = 0m;
+            }
+            else
+            {
+                resultado.TIR = (decimal)Math.Round(tirMensual, 15);
+                resultado.TCEA = CalcularTCEA(tirMensual, periodosPorAnio);
+            }
 
             double cokAnual = (double)(input.TasaDescuento / 100m);
-            double cokMensual = Math.Pow(1 + cokAnual, (double)input.DiasPorPeriodo / input.DiasPorAnio) - 1;
+            double cokMensual = Math.Pow(1 + cokAnual, (double)diasPorPeriodo / diasPorAnio) - 1;
 
-            resultado.VAN = (decimal)(Financial.Npv(cokMensual, flujoCaja.Skip(1)) + flujoCaja[0]);
+            resultado.VAN = (decimal)Math.Round(CalcularVANativo(cokMensual, flujosCaja), 15);
 
             return resultado;
         }
 
-        private decimal ConvertirTasaNominalAEfectiva(decimal tna, decimal periodosPorAnio)
+        private decimal ConvertirTasaNominalAEfectiva(decimal tna, double periodosPorAnio)
         {
-            return (decimal)(Math.Pow((double)(1 + tna / periodosPorAnio), (double)periodosPorAnio) - 1);
+            return (decimal)Math.Round(Math.Pow(1 + (double)tna / periodosPorAnio, periodosPorAnio) - 1, 15);
+        }
+
+        public double CalcularVANativo(double tasaDescuento, List<double> flujos)
+        {
+            double van = 0;
+            for (int t = 0; t < flujos.Count; t++)
+            {
+                van += flujos[t] / Math.Pow(1 + tasaDescuento, t);
+            }
+            return van;
+        }
+
+        public double CalcularTIRnativo(List<double> flujos)
+        {
+            double tir = CalcularTIR_NewtonRaphson(flujos);
+            if (double.IsNaN(tir))
+            {
+                tir = CalcularTIR_Biseccion(flujos);
+            }
+            return tir;
+        }
+
+        private double CalcularTIR_NewtonRaphson(List<double> flujos)
+        {
+            double tir = 0.01;
+            for (int i = 0; i < MaxIter; i++)
+            {
+                double van = 0;
+                double derivada = 0;
+                for (int t = 0; t < flujos.Count; t++)
+                {
+                    double factor = Math.Pow(1 + tir, t);
+                    van += flujos[t] / factor;
+                    if (t > 0)
+                    {
+                        derivada -= t * flujos[t] / Math.Pow(1 + tir, t + 1);
+                    }
+                }
+                if (Math.Abs(van) < Epsilon) return tir;
+                if (derivada == 0) return double.NaN;
+                
+                double nuevaTir = tir - van / derivada;
+                if (nuevaTir <= -1.0) nuevaTir = -0.99;
+                if (nuevaTir > 2.0) nuevaTir = 2.0;
+                
+                tir = nuevaTir;
+            }
+            return double.NaN;
+        }
+
+        private double CalcularTIR_Biseccion(List<double> flujos)
+        {
+            double low = -0.99, high = 1.0;
+            double vanLow = CalcularVANativo(low, flujos);
+            double vanHigh = CalcularVANativo(high, flujos);
+            
+            if (Math.Sign(vanLow) == Math.Sign(vanHigh)) return 0.0;
+
+            for (int i = 0; i < MaxIter; i++)
+            {
+                double mid = (low + high) / 2;
+                double vanMid = CalcularVANativo(mid, flujos);
+                
+                if (Math.Abs(vanMid) < Epsilon) return mid;
+                
+                if (Math.Sign(vanMid) == Math.Sign(vanLow))
+                {
+                    low = mid;
+                    vanLow = vanMid;
+                }
+                else
+                {
+                    high = mid;
+                    vanHigh = vanMid;
+                }
+            }
+            return double.NaN;
+        }
+
+        public decimal CalcularTCEA(double tirMensual, double periodosPorAnio)
+        {
+            return (decimal)Math.Round(Math.Pow(1 + tirMensual, periodosPorAnio) - 1, 15);
         }
 
         private List<DetalleCronogramaDto> GenerarCronogramaFrances(
-            decimal saldoCapital,
-            decimal tasaMensual,
-            int totalCuotas,
-            string tipoGracia,
-            int mesesGracia,
-            decimal tasaDesgravamen,
-            decimal montoSeguroRiesgo,
-            decimal portes,
-            decimal gastosAdmin)
+            double saldoCapital, double tasaMensual, int totalCuotas, string tipoGracia,
+            int mesesGracia, double tasaDesgravamen, double montoSeguroRiesgo,
+            double portes, double gastosAdmin, Dictionary<int, decimal>? pagosAnticipados, string tipoPrepago)
         {
             var cronograma = new List<DetalleCronogramaDto>();
-            int cuotaActual = 1;
+            double saldoInicialPeriodo = saldoCapital;
 
-            for (int i = 0; i < mesesGracia; i++)
+            for (int i = 1; i <= mesesGracia; i++)
             {
-                decimal interes = saldoCapital * tasaMensual;
-                decimal segDesgravamen = saldoCapital * tasaDesgravamen;
+                double interes = saldoInicialPeriodo * tasaMensual;
+                double segDesgravamen = saldoInicialPeriodo * tasaDesgravamen;
+                double cuotaTotal;
+                double saldoInicialActual = saldoInicialPeriodo;
 
                 if (tipoGracia == "Total")
                 {
-                    saldoCapital += interes;
-
-                    cronograma.Add(new DetalleCronogramaDto
-                    {
-                        NroCuota = cuotaActual++,
-                        SaldoInicial = saldoCapital - interes,
-                        Interes = interes,
-                        Amortizacion = 0m,
-                        SegDesgravamen = segDesgravamen,
-                        SeguroRiesgo = montoSeguroRiesgo,
-                        SegInmueble = montoSeguroRiesgo,
-                        Portes = portes,
-                        GastosAdministracion = gastosAdmin,
-                        CuotaTotal = 0m,
-                        SaldoFinal = saldoCapital,
-                        TasaPeriodo = tasaMensual
-                    });
+                    saldoInicialPeriodo += interes;
+                    cuotaTotal = segDesgravamen + montoSeguroRiesgo + portes + gastosAdmin;
                 }
-                else if (tipoGracia == "Parcial")
+                else // Parcial
                 {
-                    decimal cuotaPagar = interes + segDesgravamen + montoSeguroRiesgo + portes + gastosAdmin;
-
-                    cronograma.Add(new DetalleCronogramaDto
-                    {
-                        NroCuota = cuotaActual++,
-                        SaldoInicial = saldoCapital,
-                        Interes = interes,
-                        Amortizacion = 0m,
-                        SegDesgravamen = segDesgravamen,
-                        SeguroRiesgo = montoSeguroRiesgo,
-                        SegInmueble = montoSeguroRiesgo,
-                        Portes = portes,
-                        GastosAdministracion = gastosAdmin,
-                        CuotaTotal = cuotaPagar,
-                        SaldoFinal = saldoCapital,
-                        TasaPeriodo = tasaMensual
-                    });
+                    cuotaTotal = interes + segDesgravamen + montoSeguroRiesgo + portes + gastosAdmin;
                 }
+
+                cronograma.Add(new DetalleCronogramaDto
+                {
+                    NroCuota = i,
+                    SaldoInicial = (decimal)Math.Round(saldoInicialActual, 15),
+                    Interes = (decimal)Math.Round(interes, 15),
+                    Amortizacion = 0,
+                    SegDesgravamen = (decimal)Math.Round(segDesgravamen, 15),
+                    SeguroRiesgo = (decimal)Math.Round(montoSeguroRiesgo, 15),
+                    Portes = (decimal)Math.Round(portes, 15),
+                    GastosAdministracion = (decimal)Math.Round(gastosAdmin, 15),
+                    CuotaTotal = (decimal)Math.Round(cuotaTotal, 15),
+                    SaldoFinal = (decimal)Math.Round(saldoInicialPeriodo, 15),
+                    TasaPeriodo = (decimal)Math.Round(tasaMensual, 15)
+                });
             }
 
             int cuotasRestantes = totalCuotas - mesesGracia;
             if (cuotasRestantes > 0)
             {
-                double i = (double)(tasaMensual + tasaDesgravamen);
-                double factor = Math.Pow(1 + i, cuotasRestantes);
-                decimal cuotaFija = saldoCapital * (decimal)((i * factor) / (factor - 1));
+                double cuotaFijaR = saldoInicialPeriodo * (Math.Pow(1 + tasaMensual, cuotasRestantes) * tasaMensual)
+                                     / (Math.Pow(1 + tasaMensual, cuotasRestantes) - 1);
 
-                for (int j = 0; j < cuotasRestantes; j++)
+                for (int i = 1; i <= cuotasRestantes; i++)
                 {
-                    decimal interes = saldoCapital * tasaMensual;
-                    decimal segDesgravamen = saldoCapital * tasaDesgravamen;
+                    int nroCuota = i + mesesGracia;
+                    double interes = saldoInicialPeriodo * tasaMensual;
+                    double amortizacion = cuotaFijaR - interes;
+                    double segDesgravamen = saldoInicialPeriodo * tasaDesgravamen;
 
-                    decimal amortizacion = cuotaFija - interes - segDesgravamen;
+                    if (i == cuotasRestantes)
+                    {
+                        amortizacion = saldoInicialPeriodo;
+                    }
 
-                    decimal cuotaTotal = cuotaFija + montoSeguroRiesgo + portes + gastosAdmin;
-                    decimal saldoFinal = saldoCapital - amortizacion;
+                    double cuotaTotal = cuotaFijaR + segDesgravamen + montoSeguroRiesgo + portes + gastosAdmin;
+
+                    double pagoExtra = 0;
+                    if (pagosAnticipados != null && pagosAnticipados.ContainsKey(nroCuota))
+                    {
+                        pagoExtra = (double)pagosAnticipados[nroCuota];
+                    }
+
+                    amortizacion += pagoExtra;
+                    cuotaTotal += pagoExtra;
+
+                    double saldoFinal = saldoInicialPeriodo - amortizacion;
+                    bool creditoTerminado = false;
+
+                    if (saldoFinal <= 0)
+                    {
+                        amortizacion = saldoInicialPeriodo;
+                        saldoFinal = 0;
+                        cuotaTotal = amortizacion + interes + segDesgravamen + montoSeguroRiesgo + portes + gastosAdmin;
+                        creditoTerminado = true;
+                    }
 
                     cronograma.Add(new DetalleCronogramaDto
                     {
-                        NroCuota = cuotaActual++,
-                        SaldoInicial = saldoCapital,
-                        Interes = interes,
-                        Amortizacion = amortizacion,
-                        SegDesgravamen = segDesgravamen,
-                        SeguroRiesgo = montoSeguroRiesgo,
-                        SegInmueble = montoSeguroRiesgo,
-                        Portes = portes,
-                        GastosAdministracion = gastosAdmin,
-                        CuotaTotal = cuotaTotal,
-                        SaldoFinal = saldoFinal < 0 ? 0 : saldoFinal,
-                        TasaPeriodo = tasaMensual
+                        NroCuota = nroCuota,
+                        SaldoInicial = (decimal)Math.Round(saldoInicialPeriodo, 15),
+                        Interes = (decimal)Math.Round(interes, 15),
+                        Amortizacion = (decimal)Math.Round(amortizacion, 15),
+                        SegDesgravamen = (decimal)Math.Round(segDesgravamen, 15),
+                        SeguroRiesgo = (decimal)Math.Round(montoSeguroRiesgo, 15),
+                        Portes = (decimal)Math.Round(portes, 15),
+                        GastosAdministracion = (decimal)Math.Round(gastosAdmin, 15),
+                        CuotaTotal = (decimal)Math.Round(cuotaTotal, 15),
+                        SaldoFinal = (decimal)Math.Round(saldoFinal, 15),
+                        TasaPeriodo = (decimal)Math.Round(tasaMensual, 15)
                     });
 
-                    saldoCapital = saldoFinal;
+                    if (creditoTerminado)
+                    {
+                        break;
+                    }
+
+                    saldoInicialPeriodo = saldoFinal;
+
+                    if (saldoFinal > 0 && pagoExtra > 0 && tipoPrepago == "ReducirCuota")
+                    {
+                        int periodosRestantes = cuotasRestantes - i;
+                        if (periodosRestantes > 0)
+                        {
+                            cuotaFijaR = saldoFinal * (Math.Pow(1 + tasaMensual, periodosRestantes) * tasaMensual)
+                                         / (Math.Pow(1 + tasaMensual, periodosRestantes) - 1);
+                        }
+                    }
+                }
+
+                var ultimaCuota = cronograma.Last();
+                if (ultimaCuota.SaldoFinal != 0.00m)
+                {
+                    if (Math.Abs(ultimaCuota.SaldoFinal) > 0.01m)
+                    {
+                        throw new InvalidOperationException($"Inconsistencia Matemática en Cronograma. El descuadre de {ultimaCuota.SaldoFinal:F15} supera el umbral de centavos.");
+                    }
+                    decimal ajuste = ultimaCuota.SaldoFinal;
+                    ultimaCuota.Amortizacion += ajuste;
+                    ultimaCuota.CuotaTotal += ajuste;
+                    ultimaCuota.SaldoFinal = 0.00m;
                 }
             }
-
             return cronograma;
         }
     }

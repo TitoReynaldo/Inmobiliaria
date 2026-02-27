@@ -83,16 +83,16 @@ public partial class InmobiliariaContext : DbContext
             entity.HasIndex(e => e.SimulacionId, "SimulacionID");
 
             entity.Property(e => e.DetalleId).HasColumnName("DetalleID");
-            entity.Property(e => e.Amortizacion).HasPrecision(30, 15);
-            entity.Property(e => e.Cuota).HasPrecision(30, 15);
-            entity.Property(e => e.CuotaTotal).HasPrecision(30, 15);
-            entity.Property(e => e.Interes).HasPrecision(30, 15);
-            entity.Property(e => e.SaldoFinal).HasPrecision(30, 15);
-            entity.Property(e => e.SaldoInicial).HasPrecision(30, 15);
-            entity.Property(e => e.SeguroDesgravamen).HasPrecision(30, 15);
-            entity.Property(e => e.SeguroInmueble).HasPrecision(30, 15);
+            entity.Property(e => e.Amortizacion).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.Cuota).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.CuotaTotal).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.Interes).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.SaldoFinal).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.SaldoInicial).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.SeguroDesgravamen).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.SeguroInmueble).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.SimulacionId).HasColumnName("SimulacionID");
-            entity.Property(e => e.TasaEfectivaPeriodo).HasPrecision(30, 15);
+            entity.Property(e => e.TasaEfectivaPeriodo).HasColumnType("decimal(30, 15)");
 
             entity.HasOne(d => d.Simulacion).WithMany(p => p.Detallecronogramas)
                 .HasForeignKey(d => d.SimulacionId)
@@ -106,9 +106,9 @@ public partial class InmobiliariaContext : DbContext
             entity.ToTable("maestrobonos");
 
             entity.Property(e => e.BonoId).HasColumnName("BonoID");
-            entity.Property(e => e.MontoBono).HasPrecision(30, 15);
-            entity.Property(e => e.PrecioViviendaDesde).HasPrecision(30, 15);
-            entity.Property(e => e.PrecioViviendaHasta).HasPrecision(30, 15);
+            entity.Property(e => e.MontoBono).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.PrecioViviendaDesde).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.PrecioViviendaHasta).HasColumnType("decimal(30, 15)");
         });
 
         modelBuilder.Entity<Propiedade>(entity =>
@@ -123,7 +123,7 @@ public partial class InmobiliariaContext : DbContext
             entity.Property(e => e.Estado)
                 .HasDefaultValueSql("'Disponible'")
                 .HasColumnType("enum('Disponible','Vendido')");
-            entity.Property(e => e.PrecioVenta).HasPrecision(30, 15);
+            entity.Property(e => e.PrecioVenta).HasColumnType("decimal(30, 15)");
         });
 
         modelBuilder.Entity<Simulacione>(entity =>
@@ -141,26 +141,26 @@ public partial class InmobiliariaContext : DbContext
             entity.Property(e => e.SimulacionId).HasColumnName("SimulacionID");
             entity.Property(e => e.ClienteId).HasColumnName("ClienteID");
             entity.Property(e => e.ConfigId).HasColumnName("ConfigID");
-            entity.Property(e => e.CuotaInicial).HasPrecision(30, 15);
+            entity.Property(e => e.CuotaInicial).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.FechaSimulacion)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("datetime");
             entity.Property(e => e.MesesGracia).HasDefaultValueSql("'0'");
-            entity.Property(e => e.MontoPrestamo).HasPrecision(30, 15);
-            entity.Property(e => e.PrecioVenta).HasPrecision(30, 15);
+            entity.Property(e => e.MontoPrestamo).HasColumnType("decimal(30, 15)");
+            entity.Property(e => e.PrecioVenta).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.PropiedadId).HasColumnName("PropiedadID");
-            entity.Property(e => e.TasaEfectivaAnual).HasPrecision(30, 15);
+            entity.Property(e => e.TasaEfectivaAnual).HasColumnType("decimal(30, 15)");
             entity.Property(e => e.Tcea)
-                .HasPrecision(30, 15)
+                .HasColumnType("decimal(30, 15)")
                 .HasColumnName("TCEA");
             entity.Property(e => e.TipoGracia)
                 .HasDefaultValueSql("'Sin Gracia'")
                 .HasColumnType("enum('Sin Gracia','Parcial','Total')");
             entity.Property(e => e.Tir)
-                .HasPrecision(30, 15)
+                .HasColumnType("decimal(30, 15)")
                 .HasColumnName("TIR");
             entity.Property(e => e.Van)
-                .HasPrecision(30, 15)
+                .HasColumnType("decimal(30, 15)")
                 .HasColumnName("VAN");
 
             entity.HasOne(d => d.Cliente).WithMany(p => p.Simulaciones)

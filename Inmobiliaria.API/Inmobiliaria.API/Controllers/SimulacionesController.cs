@@ -5,6 +5,12 @@ using System.Security.Claims;
 using Inmobiliaria.API.Models;
 using Inmobiliaria.API.DTOs.Simulacion;
 using Inmobiliaria.API.Services;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Inmobiliaria.API.Controllers
 {
@@ -15,11 +21,13 @@ namespace Inmobiliaria.API.Controllers
     {
         private readonly InmobiliariaContext _context;
         private readonly IFinancialService _financialService;
+        private readonly ILogger<SimulacionesController> _logger;
 
-        public SimulacionesController(InmobiliariaContext context, IFinancialService financialService)
+        public SimulacionesController(InmobiliariaContext context, IFinancialService financialService, ILogger<SimulacionesController> logger)
         {
             _context = context;
             _financialService = financialService;
+            _logger = logger;
         }
 
         [HttpPost("calcular")]
@@ -27,6 +35,9 @@ namespace Inmobiliaria.API.Controllers
         {
             if (!ModelState.IsValid)
             {
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("\n[ERROR DE VALIDACIÓN DTO] " + JsonSerializer.Serialize(ModelState));
+                Console.ResetColor();
                 return BadRequest(ModelState);
             }
 
@@ -55,7 +66,7 @@ namespace Inmobiliaria.API.Controllers
                     await _context.SaveChangesAsync();
                 }
 
-                var resultado = _financialService.CalcularSimulacion(input);
+                var resultado = await _financialService.CalcularSimulacion(input);
                 resultado.Moneda = input.Moneda;
 
                 var propiedadDefecto = await _context.Propiedades.FirstOrDefaultAsync()
@@ -97,7 +108,7 @@ namespace Inmobiliaria.API.Controllers
                     Amortizacion = d.Amortizacion,
                     Cuota = d.Amortizacion + d.Interes,
                     SeguroDesgravamen = d.SegDesgravamen,
-                    SeguroInmueble = d.SegInmueble,
+                    SeguroInmueble = d.SeguroRiesgo, // Corrected mapping
                     CuotaTotal = d.CuotaTotal,
                     SaldoFinal = d.SaldoFinal
                 }).ToList();
@@ -109,10 +120,19 @@ namespace Inmobiliaria.API.Controllers
 
                 return Ok(resultado);
             }
+            catch (InvalidOperationException ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n[ADVERTENCIA DE NEGOCIO] {ex.Message}\nPayload: {JsonSerializer.Serialize(input)}\n");
+                Console.ResetColor();
+                return BadRequest(new { message = "Inconsistencia matemática en la simulación", detalle = ex.Message });
+            }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CRÍTICO] Fallo en Simulación: {ex.ToString()}");
-                return StatusCode(500, new { message = "Error interno.", detalle = ex.Message, inner = ex.InnerException?.Message });
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n[ERROR CRÍTICO] {ex.Message}\nStackTrace: {ex.StackTrace}\nPayload: {JsonSerializer.Serialize(input)}\n");
+                Console.ResetColor();
+                return StatusCode(500, new { message = "Error interno del servidor.", detalle = ex.Message });
             }
         }
 

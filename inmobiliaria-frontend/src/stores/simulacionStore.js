@@ -73,8 +73,12 @@ export const useSimulacionStore = defineStore('simulacion', () => {
       return true
     } catch (error) {
       console.error('Error al calcular en Store:', error)
-      console.error('Error de validación .NET:', error.response?.data)
-      errorMsg.value = error.response?.data?.message || 'Error al procesar la simulación.'
+      const data = error.response?.data
+      if (data) {
+        errorMsg.value = [data.message, data.detalle].filter(Boolean).join(' - ')
+      } else {
+        errorMsg.value = 'Error al procesar la simulación.'
+      }
       return false
     } finally {
       loading.value = false

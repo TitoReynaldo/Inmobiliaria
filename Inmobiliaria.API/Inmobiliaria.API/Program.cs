@@ -5,6 +5,8 @@ using System.Text;
 using Inmobiliaria.API.Models;
 using Inmobiliaria.API.Services;
 
+using Microsoft.AspNetCore.Mvc;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCors(options =>
@@ -19,6 +21,10 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
+
+builder.Services.Configure<ApiBehaviorOptions>(options => {
+    options.SuppressModelStateInvalidFilter = true;
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<InmobiliariaContext>(options =>
@@ -50,14 +56,18 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddOpenApi();
 
+builder.Services.AddHttpLogging(logging => { logging.LoggingFields = Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.All; });
+
 var app = builder.Build();
+
+app.UseHttpLogging();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Desactivado temporalmente para evitar bloqueos CORS en desarrollo local HTTP
 
 app.UseCors("PermitirFrontend");
 

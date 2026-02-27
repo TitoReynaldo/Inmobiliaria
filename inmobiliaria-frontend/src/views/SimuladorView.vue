@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSimulacionStore } from '../stores/simulacionStore'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
@@ -11,7 +11,10 @@ const simulacionStore = useSimulacionStore()
 if (!simulacionStore.input.precioVivienda) simulacionStore.input.precioVivienda = 250000
 if (!simulacionStore.input.cuotaInicialPorcentaje) simulacionStore.input.cuotaInicialPorcentaje = 20
 if (!simulacionStore.input.tasaInteres) simulacionStore.input.tasaInteres = 10.8
+if (!simulacionStore.input.tipoTasa) simulacionStore.input.tipoTasa = 'Efectiva'
 if (!simulacionStore.input.plazoMeses) simulacionStore.input.plazoMeses = 240
+if (!simulacionStore.input.tipoPrepago) simulacionStore.input.tipoPrepago = 'ReducirCuota'
+if (!simulacionStore.input.pagosAnticipados) simulacionStore.input.pagosAnticipados = {}
 
 const plazoAnios = computed({
   get: () => Number((simulacionStore.input.plazoMeses / 12).toFixed(2)),
@@ -21,6 +24,21 @@ const plazoAnios = computed({
     }
   }
 })
+
+const nuevoPrepagoCuota = ref(null)
+const nuevoPrepagoMonto = ref(null)
+
+const agregarPrepago = () => {
+  if (nuevoPrepagoCuota.value && nuevoPrepagoMonto.value > 0) {
+    simulacionStore.input.pagosAnticipados[nuevoPrepagoCuota.value] = nuevoPrepagoMonto.value
+    nuevoPrepagoCuota.value = null
+    nuevoPrepagoMonto.value = null
+  }
+}
+
+const eliminarPrepago = (cuota) => {
+  delete simulacionStore.input.pagosAnticipados[cuota]
+}
 
 const calcularSimulacion = async () => {
   await simulacionStore.calcular()
@@ -58,24 +76,23 @@ const chartOptions = computed(() => {
   }
 })
 
-const formatCurrency = (value, currencyCode = simulacionStore.input.moneda) => {
+const formatMonedaNormal = (value, currencyCode = simulacionStore.input.moneda) => {
   if (value === undefined || value === null) {
     return currencyCode === 'USD' ? '$ 0.00' : 'S/ 0.00'
   }
-  return new Intl.NumberFormat('es-PE', {
-    style: 'currency',
-    currency: currencyCode === 'USD' ? 'USD' : 'PEN',
-    minimumFractionDigits: 2,
-  }).format(value)
+  return `${currencyCode === 'USD' ? '$' : 'S/'} ${Number(value).toFixed(2)}`
 }
 
-const formatRate = (value) => {
+const formatMonedaInteres = (value, currencyCode = simulacionStore.input.moneda) => {
+  if (value === undefined || value === null) {
+    return currencyCode === 'USD' ? '$ 0.000000000000000' : 'S/ 0.000000000000000'
+  }
+  return `${currencyCode === 'USD' ? '$' : 'S/'} ${Number(value).toFixed(15)}`
+}
+
+const formatTasa = (value) => {
   if (value === undefined || value === null) return '0.000000000000000%'
-  return new Intl.NumberFormat('es-PE', {
-    style: 'percent',
-    minimumFractionDigits: 15,
-    maximumFractionDigits: 15,
-  }).format(value)
+  return `${Number(value * 100).toFixed(15)}%`
 }
 </script>
 
@@ -83,28 +100,6 @@ const formatRate = (value) => {
   <div class="simulador-container">
     <section class="panel input-panel">
       <h2 class="panel-title">Configuración del Crédito (Modelo BCP)</h2>
-
-      <div class="currency-toggle-container">
-        <label class="toggle-main-label">Moneda de la Operación</label>
-        <div class="currency-toggle-group">
-          <button 
-            type="button"
-            class="toggle-btn" 
-            :class="{ active: simulacionStore.input.moneda === 'PEN' }"
-            @click="simulacionStore.input.moneda = 'PEN'"
-          >
-            <span class="flag">🇵🇪</span> Soles
-          </button>
-          <button 
-            type="button"
-            class="toggle-btn" 
-            :class="{ active: simulacionStore.input.moneda === 'USD' }"
-            @click="simulacionStore.input.moneda = 'USD'"
-          >
-            <span class="flag">🇺🇸</span> Dólares
-          </button>
-        </div>
-      </div>
 
       <form @submit.prevent="calcularSimulacion" class="simulador-form">
         <div class="fieldsets-grid">
@@ -149,10 +144,20 @@ const formatRate = (value) => {
                   required
                   min="0"
                   max="100"
-                />
+                /> //TRAS
               </div>
               <div class="form-group">
-                <label title="Tasa Efectiva Anual (Costo del préstamo).">TEA (%)</label>
+                <label title="Tipo de Tasa">Tipo de Tasa</label>
+                <select v-model="simulacionStore.input.tipoTasa" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
+                  <option value="Efectiva">Efectiva</option>
+                  <option value="Nominal">Nominal</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label title="Tasa Anual (Costo del préstamo).">Tasa de Interés (%)</label>
                 <input
                   v-model.number="simulacionStore.input.tasaInteres"
                   type="number"
@@ -160,12 +165,8 @@ const formatRate = (value) => {
                   required
                 />
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
-                <label
-                  title="Cantidad de días considerados para un periodo de facturación (usualmente 30)."
+                <label title="Cantidad de días considerados para un periodo de facturación (usualmente 30)."
                   >Días x Periodo</label
                 >
                 <input
@@ -175,6 +176,9 @@ const formatRate = (value) => {
                   min="1"
                 />
               </div>
+            </div>
+
+            <div class="form-row">
               <div class="form-group">
                 <label title="Base de días en un año contable (usualmente 360).">Días x Año</label>
                 <input
@@ -184,9 +188,6 @@ const formatRate = (value) => {
                   min="1"
                 />
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
                 <label title="Duración total del préstamo expresada en meses.">Plazo (Meses)</label>
                 <input
@@ -197,6 +198,9 @@ const formatRate = (value) => {
                   required
                 />
               </div>
+            </div>
+
+            <div class="form-row">
               <div class="form-group">
                 <label title="Duración total del préstamo expresada en años.">Plazo (Años)</label>
                 <input
@@ -208,19 +212,19 @@ const formatRate = (value) => {
                   required
                 />
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
                 <label title="Tiempo en el que no se paga capital o intereses."
                   >Periodo de Gracia</label
                 >
-                <select v-model="simulacionStore.input.tipoGracia" class="form-control">
+                <select v-model="simulacionStore.input.tipoGracia" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
                   <option value="Sin Gracia">Sin Gracia</option>
                   <option value="Parcial">Gracia Parcial (Paga Interés)</option>
                   <option value="Total">Gracia Total (Capitaliza)</option>
                 </select>
               </div>
+            </div>
+
+            <div class="form-row">
               <div class="form-group" v-if="simulacionStore.input.tipoGracia !== 'Sin Gracia'">
                 <label title="Cantidad de meses que dura el periodo de gracia."
                   >Meses de Gracia</label
@@ -229,7 +233,7 @@ const formatRate = (value) => {
                   v-model.number="simulacionStore.input.mesesGracia"
                   type="number"
                   min="1"
-                  max="24"
+                  max="360"
                   required
                 />
               </div>
@@ -267,17 +271,6 @@ const formatRate = (value) => {
                 <label title="Costo pagado al tasador del inmueble.">Tasación {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
                 <input
                   v-model.number="simulacionStore.input.tasacion"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
-              </div>
-              <div class="form-group">
-                <label title="Comisión que cobra el banco por desembolsar el préstamo."
-                  >Comisión Activación {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.comisionActivacion"
                   type="number"
                   step="0.01"
                   min="0"
@@ -340,7 +333,39 @@ const formatRate = (value) => {
           </fieldset>
 
           <fieldset class="form-fieldset">
-            <legend>Costo de Oportunidad</legend>
+            <legend>Amortizaciones Extraordinarias</legend>
+            <div class="form-group">
+              <label title="Estrategia al realizar un pago anticipado">Tipo de Prepago</label>
+              <select v-model="simulacionStore.input.tipoPrepago" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
+                <option value="ReducirCuota">Reducir Cuota (Mismo Plazo)</option>
+                <option value="ReducirPlazo">Reducir Plazo (Misma Cuota)</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label title="Número de la cuota en la que se hará el prepago">N° Cuota</label>
+                <input v-model.number="nuevoPrepagoCuota" type="number" min="1" />
+              </div>
+              <div class="form-group">
+                <label title="Monto adicional a amortizar">Monto {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
+                <input v-model.number="nuevoPrepagoMonto" type="number" step="0.01" min="0" />
+              </div>
+            </div>
+            <button type="button" @click="agregarPrepago" class="btn-secondary" style="margin-bottom: 1rem; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); cursor:pointer; background: transparent; color: var(--text-color);">
+              Añadir Prepago
+            </button>
+
+            <div class="prepagos-list" v-if="Object.keys(simulacionStore.input.pagosAnticipados).length > 0">
+              <div v-for="(monto, cuota) in simulacionStore.input.pagosAnticipados" :key="cuota" class="prepago-item" style="display:flex; justify-content:space-between; margin-bottom: 0.5rem; font-size: 0.9rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
+                <span>Cuota {{ cuota }}: {{ formatMonedaNormal(monto) }}</span>
+                <button type="button" @click="eliminarPrepago(cuota)" style="color:red; background:none; border:none; cursor:pointer;">Eliminar</button>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-fieldset">
+            <legend>Costo de Oportunidad y Acciones</legend>
             <div class="form-group">
               <label
                 title="Tasa utilizada para descontar y traer al valor presente los flujos futuros."
@@ -368,6 +393,28 @@ const formatRate = (value) => {
               </label>
             </div>
 
+            <div class="form-group currency-pill-container">
+              <label title="Moneda de la Operación">Moneda de la Operación</label>
+              <div class="currency-pill-group">
+                <button
+                  type="button"
+                  class="pill-btn"
+                  :class="{ active: simulacionStore.input.moneda === 'PEN' }"
+                  @click="simulacionStore.input.moneda = 'PEN'"
+                >
+                  Soles (S/)
+                </button>
+                <button
+                  type="button"
+                  class="pill-btn"
+                  :class="{ active: simulacionStore.input.moneda === 'USD' }"
+                  @click="simulacionStore.input.moneda = 'USD'"
+                >
+                  Dólares ($)
+                </button>
+              </div>
+            </div>
+
             <div class="action-container">
               <button type="submit" class="btn-submit" :disabled="simulacionStore.loading">
                 {{ simulacionStore.loading ? 'Procesando...' : 'Generar Simulación' }}
@@ -391,35 +438,35 @@ const formatRate = (value) => {
             <div class="kpi-box">
               <span class="kpi-label">TCEA</span>
               <span class="kpi-value highlight">{{
-                formatRate(simulacionStore.resultado.tcea)
+                formatTasa(simulacionStore.resultado.tcea)
               }}</span>
             </div>
-            <div class="kpi-box">
-              <span class="kpi-label">Costo Financiero Actualizado (VAN)</span>
-              <span class="kpi-value">{{
-                formatCurrency(Math.abs(simulacionStore.resultado.van || 0))
+            <div class="kpi-box kpi-box-van">
+              <span class="kpi-label kpi-label-van">COSTO FINANCIERO ACTUALIZADO (VAN)</span>
+              <span class="kpi-value kpi-value-van">{{
+                formatMonedaNormal(Math.abs(simulacionStore.resultado.van || 0))
               }}</span>
             </div>
             <div class="kpi-box">
               <span class="kpi-label">TIR Mensual</span>
-              <span class="kpi-value">{{ formatRate(simulacionStore.resultado.tir) }}</span>
+              <span class="kpi-value">{{ formatTasa(simulacionStore.resultado.tir) }}</span>
             </div>
           </div>
 
           <div class="summary-box mt-3">
             <p>
               <strong>Total Intereses:</strong><br />{{
-                formatCurrency(simulacionStore.resultado.totalIntereses)
+                formatMonedaInteres(simulacionStore.resultado.totalIntereses)
               }}
             </p>
             <p>
               <strong>Total Seguros:</strong><br />{{
-                formatCurrency(simulacionStore.resultado.totalSeguros)
+                formatMonedaNormal(simulacionStore.resultado.totalSeguros)
               }}
             </p>
             <p>
               <strong>Total a Pagar:</strong><br />{{
-                formatCurrency(
+                formatMonedaNormal(
                   (simulacionStore.resultado.totalAmortizacion || 0) +
                     (simulacionStore.resultado.totalIntereses || 0) +
                     (simulacionStore.resultado.totalSeguros || 0),
@@ -470,15 +517,15 @@ const formatRate = (value) => {
           <tbody>
             <tr v-for="fila in simulacionStore.resultado.cronograma" :key="fila.nroCuota">
               <td>{{ fila.nroCuota }}</td>
-              <td>{{ formatRate(fila.tasaPeriodo) }}</td>
-              <td>{{ formatCurrency(fila.saldoInicial) }}</td>
-              <td>{{ formatCurrency(fila.amortizacion) }}</td>
-              <td>{{ formatCurrency(fila.interes) }}</td>
-              <td>{{ formatCurrency(fila.segDesgravamen) }}</td>
-              <td>{{ formatCurrency(fila.seguroRiesgo || fila.segInmueble) }}</td>
-              <td>{{ formatCurrency((fila.portes || 0) + (fila.gastosAdministracion || 0)) }}</td>
-              <td class="col-cuota">{{ formatCurrency(fila.cuotaTotal) }}</td>
-              <td>{{ formatCurrency(fila.saldoFinal) }}</td>
+              <td>{{ formatTasa(fila.tasaPeriodo) }}</td>
+              <td>{{ formatMonedaNormal(fila.saldoInicial) }}</td>
+              <td>{{ formatMonedaNormal(fila.amortizacion) }}</td>
+              <td>{{ formatMonedaInteres(fila.interes) }}</td>
+              <td>{{ formatMonedaNormal(fila.segDesgravamen) }}</td>
+              <td>{{ formatMonedaNormal(fila.seguroRiesgo || fila.segInmueble) }}</td>
+              <td>{{ formatMonedaNormal((fila.portes || 0) + (fila.gastosAdministracion || 0)) }}</td>
+              <td class="col-cuota">{{ formatMonedaNormal(fila.cuotaTotal) }}</td>
+              <td>{{ formatMonedaNormal(fila.saldoFinal) }}</td>
             </tr>
           </tbody>
         </table>
@@ -492,59 +539,6 @@ const formatRate = (value) => {
   display: flex;
   flex-direction: column;
   gap: 2rem;
-}
-
-.currency-toggle-container {
-  margin-bottom: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.toggle-main-label {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--text-title);
-  border-bottom: none !important;
-  cursor: default !important;
-}
-
-.currency-toggle-group {
-  display: flex;
-  background: var(--kpi-bg);
-  padding: 0.4rem;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  width: fit-content;
-}
-
-.toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1.5rem;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.toggle-btn .flag {
-  font-size: 1.25rem;
-}
-
-.toggle-btn:hover {
-  color: var(--text-color);
-}
-
-.toggle-btn.active {
-  background: var(--primary);
-  color: white;
-  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 .panel {
@@ -569,8 +563,15 @@ const formatRate = (value) => {
 
 .fieldsets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.5rem;
+  align-items: stretch;
+}
+
+@media (min-width: 1200px) {
+  .fieldsets-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }
 
 .form-fieldset {
@@ -611,13 +612,6 @@ label {
   cursor: help;
 }
 
-.helper-text {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  display: block;
-  margin-top: 0.3rem;
-}
-
 .subsidies {
   background: var(--kpi-bg);
   padding: 1rem;
@@ -649,6 +643,46 @@ select {
     background 0.3s,
     color 0.3s,
     border-color 0.3s;
+}
+
+/* Nuevos estilos para el toggle de moneda */
+.currency-pill-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.currency-pill-group {
+  display: flex;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.pill-btn {
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  text-align: center;
+}
+
+.pill-btn:hover {
+  background: rgba(0,0,0,0.05);
+  color: var(--text-color);
+}
+
+.pill-btn.active {
+  background: var(--primary);
+  color: white;
 }
 
 .action-container {
@@ -729,6 +763,14 @@ select {
   white-space: nowrap;
 }
 
+.kpi-label-van {
+  font-size: clamp(0.7rem, 2vw, 0.85rem);
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+  margin-bottom: 0.2rem;
+}
+
 .kpi-value {
   display: block;
   font-size: clamp(0.85rem, 1.2vw, 1.1rem);
@@ -738,6 +780,17 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.kpi-box-van {
+  min-width: 180px;
+}
+
+.kpi-value-van {
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  font-size: clamp(0.7rem, 1vw, 1rem);
 }
 
 .kpi-value.highlight {
@@ -844,6 +897,8 @@ select {
   text-align: right;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-color);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .financial-table tbody tr:hover {

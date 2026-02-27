@@ -30,7 +30,6 @@ El núcleo del sistema expone la lógica de negocio mediante una API REST proteg
 **Dependencias Core (NuGet):**
 * `Pomelo.EntityFrameworkCore.MySql` (v9.0.0): Abstracción ORM nativa y de alto rendimiento.
 * `Microsoft.AspNetCore.Authentication.JwtBearer` & `System.IdentityModel.Tokens.Jwt`: Infraestructura de seguridad, autorización y validación de sesiones.
-* `ExcelFinancialFunctions` (v3.2.0): Motor matemático validado bajo estándares de la industria para cálculos precisos de TCEA, VAN, TIR y amortizaciones.
 * `Microsoft.AspNetCore.OpenApi`: Especificación estandarizada de endpoints.
 
 **Instrucciones de Despliegue:**
