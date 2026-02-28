@@ -103,6 +103,13 @@ export const useSimulacionStore = defineStore('simulacion', () => {
     await calcular()
   }
 
+  const cargarParaEdicion = (datos) => {
+    input.value.precioVivienda = datos.precioVenta || datos.PrecioVenta || input.value.precioVivienda;
+    input.value.plazoMeses = datos.plazo || datos.Plazo || input.value.plazoMeses;
+    input.value.moneda = datos.moneda || datos.Moneda || input.value.moneda;
+    resultado.value = null;
+  }
+
   const resetearResultados = () => {
     resultado.value = null
     errorMsg.value = ''
@@ -115,6 +122,7 @@ export const useSimulacionStore = defineStore('simulacion', () => {
     errorMsg,
     calcular,
     cargarDesdeHistorial,
+    cargarParaEdicion,
     resetearResultados,
   }
 })

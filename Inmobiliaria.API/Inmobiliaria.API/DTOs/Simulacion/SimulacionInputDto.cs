@@ -27,17 +27,21 @@ namespace Inmobiliaria.API.DTOs.Simulacion
         [RegularExpression("^(Sin Gracia|Parcial|Total)$", ErrorMessage = "Tipo de gracia inválido.")]
         public string TipoGracia { get; set; } = "Sin Gracia";
 
-        [Range(0, 360, ErrorMessage = "El periodo de gracia no puede ser negativo ni exceder 360 meses.")]
-        public int MesesGracia { get; set; } = 0;
+        [Range(0, 360, ErrorMessage = "El periodo de gracia no puede ser negativo ni exceder 360 periodos.")]
+        public int PeriodosGracia { get; set; } = 0;
 
         public bool AplicaBonoBuenPagador { get; set; } = false;
         public bool AplicaBonoVerde { get; set; } = false;
+        public bool AplicaTechoPropio { get; set; } = false;
 
         public decimal ValorTasacion { get; set; }
         public decimal CuotaInicialPorcentaje { get; set; }
         public int DiasPorPeriodo { get; set; } = 30;
         public int DiasPorAnio { get; set; } = 360;
         public int PlazoMeses { get; set; }
+        public int MesesPorCuota { get; set; } = 1;
+        public decimal IncrementoTasaFutura { get; set; } = 0;
+        public int CuotaInicioAjuste { get; set; } = 0;
 
         public decimal CostesNotariales { get; set; } = 0;
         public decimal CostesRegistrales { get; set; } = 0;

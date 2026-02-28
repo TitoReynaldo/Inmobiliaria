@@ -15,6 +15,9 @@ if (!simulacionStore.input.tipoTasa) simulacionStore.input.tipoTasa = 'Efectiva'
 if (!simulacionStore.input.plazoMeses) simulacionStore.input.plazoMeses = 240
 if (!simulacionStore.input.tipoPrepago) simulacionStore.input.tipoPrepago = 'ReducirCuota'
 if (!simulacionStore.input.pagosAnticipados) simulacionStore.input.pagosAnticipados = {}
+if (!simulacionStore.input.mesesPorCuota) simulacionStore.input.mesesPorCuota = 1
+if (simulacionStore.input.incrementoTasaFutura === undefined) simulacionStore.input.incrementoTasaFutura = 0
+if (simulacionStore.input.cuotaInicioAjuste === undefined) simulacionStore.input.cuotaInicioAjuste = 0
 
 const plazoAnios = computed({
   get: () => Number((simulacionStore.input.plazoMeses / 12).toFixed(2)),
@@ -23,6 +26,32 @@ const plazoAnios = computed({
       simulacionStore.input.plazoMeses = Math.round(newVal * 12)
     }
   }
+})
+
+const totalCuotasCalculadas = computed(() => {
+  const mesesTotales = simulacionStore.input.plazoMeses || 0
+  const mesesPorCuota = simulacionStore.input.mesesPorCuota || 1
+  return Math.ceil(mesesTotales / mesesPorCuota)
+})
+
+const alertaGraciaRiesgo = computed(() => {
+  const periodos = simulacionStore.input.periodosGracia
+  if (!periodos || periodos <= 0) return null
+
+  const mesesPorCuota = simulacionStore.input.mesesPorCuota || 1
+  const mesesReales = periodos * mesesPorCuota
+
+  const bonoBBP = simulacionStore.input.aplicaBonoBuenPagador
+  const bonoVerde = simulacionStore.input.aplicaBonoVerde
+  const bonoTechoPropio = simulacionStore.input.aplicaTechoPropio
+
+  const limiteMeses = (bonoBBP || bonoVerde || bonoTechoPropio) ? 12 : 6
+
+  if (mesesReales > limiteMeses) {
+    return `⚠️ Equivale a ${mesesReales} meses. Excede el límite bancario (${limiteMeses} meses).`
+  }
+
+  return null
 })
 
 const nuevoPrepagoCuota = ref(null)
@@ -42,6 +71,38 @@ const eliminarPrepago = (cuota) => {
 
 const calcularSimulacion = async () => {
   await simulacionStore.calcular()
+}
+
+const limpiarFormulario = () => {
+  simulacionStore.input.precioVivienda = null;
+  simulacionStore.input.valorTasacion = null;
+  simulacionStore.input.cuotaInicialPorcentaje = null;
+  simulacionStore.input.tasaInteres = null;
+  simulacionStore.input.tipoTasa = 'Efectiva';
+  simulacionStore.input.plazoMeses = null;
+  simulacionStore.input.mesesPorCuota = 1;
+  simulacionStore.input.diasPorPeriodo = 30;
+  simulacionStore.input.diasPorAnio = 360;
+  simulacionStore.input.tipoGracia = 'Sin Gracia';
+  simulacionStore.input.periodosGracia = 0;
+  simulacionStore.input.costesNotariales = 0;
+  simulacionStore.input.costesRegistrales = 0;
+  simulacionStore.input.tasacion = 0;
+  simulacionStore.input.portes = 0;
+  simulacionStore.input.gastosAdministracion = 0;
+  simulacionStore.input.seguroDesgravamenMensual = 0;
+  simulacionStore.input.seguroRiesgoMensual = 0;
+  simulacionStore.input.incrementoTasaFutura = 0;
+  simulacionStore.input.cuotaInicioAjuste = 0;
+  simulacionStore.input.tipoPrepago = 'ReducirCuota';
+  simulacionStore.input.pagosAnticipados = {};
+  simulacionStore.input.tasaDescuento = 0;
+  simulacionStore.input.aplicaBonoBuenPagador = false;
+  simulacionStore.input.aplicaBonoVerde = false;
+  simulacionStore.input.aplicaTechoPropio = false;
+  simulacionStore.input.moneda = 'PEN';
+  simulacionStore.resultado = null;
+  simulacionStore.errorMsg = '';
 }
 
 const chartData = computed(() => {
@@ -75,7 +136,7 @@ const chartOptions = computed(() => {
     },
   }
 })
-
+//TRAS
 const formatMonedaNormal = (value, currencyCode = simulacionStore.input.moneda) => {
   if (value === undefined || value === null) {
     return currencyCode === 'USD' ? '$ 0.00' : 'S/ 0.00'
@@ -144,7 +205,7 @@ const formatTasa = (value) => {
                   required
                   min="0"
                   max="100"
-                /> //TRAS
+                />
               </div>
               <div class="form-group">
                 <label title="Tipo de Tasa">Tipo de Tasa</label>
@@ -166,9 +227,25 @@ const formatTasa = (value) => {
                 />
               </div>
               <div class="form-group">
+                <label title="Frecuencia de Pago">Frecuencia de Pago</label>
+                <select v-model.number="simulacionStore.input.mesesPorCuota" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
+                  <option :value="1">Mensual</option>
+                  <option :value="2">Bimestral</option>
+                  <option :value="3">Trimestral</option>
+                  <option :value="4">Cuatrimestral</option>
+                  <option :value="6">Semestral</option>
+                  <option :value="12">Anual</option>
+                </select>
+                <span class="helper-text" style="color: var(--text-muted);">
+                  Total de cuotas proyectadas: <strong>{{ totalCuotasCalculadas }}</strong>
+                </span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
                 <label title="Cantidad de días considerados para un periodo de facturación (usualmente 30)."
-                  >Días x Periodo</label
-                >
+                  >Días x Periodo Base</label>
                 <input
                   v-model.number="simulacionStore.input.diasPorPeriodo"
                   type="number"
@@ -176,9 +253,6 @@ const formatTasa = (value) => {
                   min="1"
                 />
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
                 <label title="Base de días en un año contable (usualmente 360).">Días x Año</label>
                 <input
@@ -188,6 +262,9 @@ const formatTasa = (value) => {
                   min="1"
                 />
               </div>
+            </div>
+
+            <div class="form-row">
               <div class="form-group">
                 <label title="Duración total del préstamo expresada en meses.">Plazo (Meses)</label>
                 <input
@@ -198,9 +275,6 @@ const formatTasa = (value) => {
                   required
                 />
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
                 <label title="Duración total del préstamo expresada en años.">Plazo (Años)</label>
                 <input
@@ -212,6 +286,9 @@ const formatTasa = (value) => {
                   required
                 />
               </div>
+            </div>
+
+            <div class="form-row">
               <div class="form-group">
                 <label title="Tiempo en el que no se paga capital o intereses."
                   >Periodo de Gracia</label
@@ -222,148 +299,173 @@ const formatTasa = (value) => {
                   <option value="Total">Gracia Total (Capitaliza)</option>
                 </select>
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group" v-if="simulacionStore.input.tipoGracia !== 'Sin Gracia'">
-                <label title="Cantidad de meses que dura el periodo de gracia."
-                  >Meses de Gracia</label
+                <label title="Cantidad de periodos que dura el periodo de gracia."
+                  >Periodos de Gracia</label
                 >
                 <input
-                  v-model.number="simulacionStore.input.mesesGracia"
+                  v-model.number="simulacionStore.input.periodosGracia"
                   type="number"
                   min="1"
                   max="360"
                   required
                 />
+                <small v-if="alertaGraciaRiesgo" class="helper-text" style="color: #d97706; font-weight: 600;">
+                  {{ alertaGraciaRiesgo }}
+                </small>
               </div>
             </div>
           </fieldset>
 
-          <fieldset class="form-fieldset">
-            <legend>Costes/Gastos Iniciales</legend>
-            <div class="form-row">
-              <div class="form-group">
-                <label title="Gastos pagados al notario por las escrituras públicas."
-                  >Costes Notariales {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.costesNotariales"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
+          <div class="fieldset-column">
+            <fieldset class="form-fieldset">
+              <legend>Costes/Gastos Iniciales</legend>
+              <div class="form-row">
+                <div class="form-group">
+                  <label title="Gastos pagados al notario por las escrituras públicas."
+                    >Costes Notariales {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.costesNotariales"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label title="Gastos cobrados por Registros Públicos."
+                    >Costes Registrales {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.costesRegistrales"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
               </div>
-              <div class="form-group">
-                <label title="Gastos cobrados por Registros Públicos."
-                  >Costes Registrales {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.costesRegistrales"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
+              <div class="form-row">
+                <div class="form-group">
+                  <label title="Costo pagado al tasador del inmueble.">Tasación {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
+                  <input
+                    v-model.number="simulacionStore.input.tasacion"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
               </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label title="Costo pagado al tasador del inmueble.">Tasación {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
-                <input
-                  v-model.number="simulacionStore.input.tasacion"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
-              </div>
-            </div>
-          </fieldset>
+            </fieldset>
 
-          <fieldset class="form-fieldset">
-            <legend>Costes/Gastos Periódicos</legend>
-            <div class="form-row">
-              <div class="form-group">
-                <label title="Costo de envío de estados de cuenta o información física."
-                  >Portes {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.portes"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
+            <fieldset class="form-fieldset">
+              <legend>Costes/Gastos Periódicos</legend>
+              <div class="form-row">
+                <div class="form-group">
+                  <label title="Costo de envío de estados de cuenta o información física."
+                    >Portes {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.portes"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label title="Gastos mensuales administrativos del banco."
+                    >Gastos Administración {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.gastosAdministracion"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
               </div>
-              <div class="form-group">
-                <label title="Gastos mensuales administrativos del banco."
-                  >Gastos Administración {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.gastosAdministracion"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                />
+              <div class="form-row">
+                <div class="form-group">
+                  <label
+                    title="Porcentaje mensual que asegura el saldo deudor en caso de fallecimiento."
+                    >Seg. Desgravamen Mensual (%)</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.seguroDesgravamenMensual"
+                    type="number"
+                    step="0.000000000000001"
+                    min="0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label title="Porcentaje mensual que protege al inmueble contra siniestros."
+                    >Seg. Riesgo Mensual (%)</label
+                  >
+                  <input
+                    v-model.number="simulacionStore.input.seguroRiesgoMensual"
+                    type="number"
+                    step="0.000000000000001"
+                    min="0"
+                  />
+                </div>
               </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label
-                  title="Porcentaje mensual que asegura el saldo deudor en caso de fallecimiento."
-                  >Seg. Desgravamen Mensual (%)</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.seguroDesgravamenMensual"
-                  type="number"
-                  step="0.000000000000001"
-                  min="0"
-                />
-              </div>
-              <div class="form-group">
-                <label title="Porcentaje mensual que protege al inmueble contra siniestros."
-                  >Seg. Riesgo Mensual (%)</label
-                >
-                <input
-                  v-model.number="simulacionStore.input.seguroRiesgoMensual"
-                  type="number"
-                  step="0.000000000000001"
-                  min="0"
-                />
-              </div>
-            </div>
-          </fieldset>
+            </fieldset>
+          </div>
 
-          <fieldset class="form-fieldset">
-            <legend>Amortizaciones Extraordinarias</legend>
-            <div class="form-group">
-              <label title="Estrategia al realizar un pago anticipado">Tipo de Prepago</label>
-              <select v-model="simulacionStore.input.tipoPrepago" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
-                <option value="ReducirCuota">Reducir Cuota (Mismo Plazo)</option>
-                <option value="ReducirPlazo">Reducir Plazo (Misma Cuota)</option>
-              </select>
-            </div>
+          <div class="fieldset-column">
+            <fieldset class="form-fieldset">
+              <legend>Escenario de Riesgo (Tasa Flexible)</legend>
+              <div class="form-row">
+                <div class="form-group">
+                  <label title="Incremento en la tasa de interés anual a aplicar en el futuro">Incremento de Tasa (%)</label>
+                  <input
+                    v-model.number="simulacionStore.input.incrementoTasaFutura"
+                    type="number"
+                    step="0.000000000000001"
+                  />
+                </div>
+                <div class="form-group">
+                  <label title="Número de cuota a partir del cual se aplicará el incremento de tasa">Aplicar desde Cuota N°</label>
+                  <input
+                    v-model.number="simulacionStore.input.cuotaInicioAjuste"
+                    type="number"
+                    min="0"
+                  />
+                </div>
+              </div>
+            </fieldset>
 
-            <div class="form-row">
+            <fieldset class="form-fieldset">
+              <legend>Amortizaciones Extraordinarias</legend>
               <div class="form-group">
-                <label title="Número de la cuota en la que se hará el prepago">N° Cuota</label>
-                <input v-model.number="nuevoPrepagoCuota" type="number" min="1" />
+                <label title="Estrategia al realizar un pago anticipado">Tipo de Prepago</label>
+                <select v-model="simulacionStore.input.tipoPrepago" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); color: var(--text-color);">
+                  <option value="ReducirCuota">Reducir Cuota (Mismo Plazo)</option>
+                  <option value="ReducirPlazo">Reducir Plazo (Misma Cuota)</option>
+                </select>
               </div>
-              <div class="form-group">
-                <label title="Monto adicional a amortizar">Monto {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
-                <input v-model.number="nuevoPrepagoMonto" type="number" step="0.01" min="0" />
-              </div>
-            </div>
-            <button type="button" @click="agregarPrepago" class="btn-secondary" style="margin-bottom: 1rem; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); cursor:pointer; background: transparent; color: var(--text-color);">
-              Añadir Prepago
-            </button>
 
-            <div class="prepagos-list" v-if="Object.keys(simulacionStore.input.pagosAnticipados).length > 0">
-              <div v-for="(monto, cuota) in simulacionStore.input.pagosAnticipados" :key="cuota" class="prepago-item" style="display:flex; justify-content:space-between; margin-bottom: 0.5rem; font-size: 0.9rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
-                <span>Cuota {{ cuota }}: {{ formatMonedaNormal(monto) }}</span>
-                <button type="button" @click="eliminarPrepago(cuota)" style="color:red; background:none; border:none; cursor:pointer;">Eliminar</button>
+              <div class="form-row">
+                <div class="form-group">
+                  <label title="Número de la cuota en la que se hará el prepago">N° Cuota</label>
+                  <input v-model.number="nuevoPrepagoCuota" type="number" min="1" />
+                </div>
+                <div class="form-group">
+                  <label title="Monto adicional a amortizar">Monto {{ simulacionStore.input.moneda === 'USD' ? '($)' : '(S/)' }}</label>
+                  <input v-model.number="nuevoPrepagoMonto" type="number" step="0.01" min="0" />
+                </div>
               </div>
-            </div>
-          </fieldset>
+              <button type="button" @click="agregarPrepago" class="btn-secondary" style="margin-bottom: 1rem; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color); cursor:pointer; background: transparent; color: var(--text-color);">
+                Añadir Prepago
+              </button>
 
+              <div class="prepagos-list" v-if="Object.keys(simulacionStore.input.pagosAnticipados).length > 0">
+                <div v-for="(monto, cuota) in simulacionStore.input.pagosAnticipados" :key="cuota" class="prepago-item" style="display:flex; justify-content:space-between; margin-bottom: 0.5rem; font-size: 0.9rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3rem;">
+                  <span>Cuota {{ cuota }}: {{ formatMonedaNormal(monto) }}</span>
+                  <button type="button" @click="eliminarPrepago(cuota)" style="color:red; background:none; border:none; cursor:pointer;">Eliminar</button>
+                </div>
+              </div>
+            </fieldset>
+          </div>
           <fieldset class="form-fieldset">
             <legend>Costo de Oportunidad y Acciones</legend>
             <div class="form-group">
@@ -419,6 +521,9 @@ const formatTasa = (value) => {
               <button type="submit" class="btn-submit" :disabled="simulacionStore.loading">
                 {{ simulacionStore.loading ? 'Procesando...' : 'Generar Simulación' }}
               </button>
+              <button type="button" @click="limpiarFormulario" title="Restablecer todos los campos" style="margin-top: 0.75rem; width: 100%; padding: 0.5rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-muted, #9ca3af); border-radius: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s;">
+                Limpiar Datos
+              </button>
             </div>
 
             <div v-if="simulacionStore.errorMsg" class="error-alert">
@@ -431,6 +536,10 @@ const formatTasa = (value) => {
 
     <section class="panel results-panel" v-if="simulacionStore.resultado">
       <h2 class="panel-title">Resultados de la Operación</h2>
+
+      <div v-if="simulacionStore.resultado.advertenciaRiesgo" class="alert-warning" style="background-color: #fffbeb; color: #b45309; border: 1px solid #f59e0b; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-weight: bold; text-align: center;">
+        ⚠️ {{ simulacionStore.resultado.advertenciaRiesgo }}
+      </div>
 
       <div class="results-grid">
         <div class="kpis-and-summary">
@@ -509,7 +618,7 @@ const formatTasa = (value) => {
               <th>Interés</th>
               <th>Seg. Desgravamen</th>
               <th>Seg. Riesgo</th>
-              <th>Gastos y Comis.</th>
+              <th>Gastos</th>
               <th>Cuota Total</th>
               <th>Saldo Final</th>
             </tr>
@@ -539,6 +648,9 @@ const formatTasa = (value) => {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .panel {
@@ -563,15 +675,22 @@ const formatTasa = (value) => {
 
 .fieldsets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 @media (min-width: 1200px) {
   .fieldsets-grid {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
+}
+
+.fieldset-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
 }
 
 .form-fieldset {
@@ -599,7 +718,25 @@ const formatTasa = (value) => {
 }
 
 .form-group {
-  margin-bottom: 1.25rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-bottom: 1.75rem;
+}
+
+.form-group input, .form-group select {
+  margin-top: auto;
+}
+
+.helper-text {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  margin-top: 0.3rem;
+  line-height: 1.2;
+  font-size: 0.8rem;
 }
 
 label {

@@ -66,6 +66,26 @@ const recrearSimulacion = async (resumen) => {
   }
 }
 
+const editarSimulacion = (fila) => {
+  simulacionStore.cargarParaEdicion(fila)
+  router.push({ name: 'simulador' })
+}
+
+const confirmarEliminacion = async (id) => {
+  if (window.confirm("¿Está seguro de eliminar esta simulación de forma permanente?")) {
+    try {
+      loading.value = true;
+      await SimulacionService.eliminarSimulacion(id);
+      historial.value = historial.value.filter(s => s.simulacionId !== id);
+    } catch (error) {
+      console.error('Error al eliminar simulación:', error);
+      alert('No se pudo eliminar la simulación. Verifique su conexión o intente nuevamente.');
+    } finally {
+      loading.value = false;
+    }
+  }
+}
+
 const descargarPDF = async (simulacion) => {
   try {
     loading.value = true
@@ -369,14 +389,28 @@ onMounted(() => {
             <td>{{ formatDate(s.fechaSimulacion) }}</td>
             <td>{{ formatCurrency(s.precioVenta, s.moneda) }}</td>
             <td class="col-monto">{{ formatCurrency(s.montoPrestamo, s.moneda) }}</td>
-            <td class="col-tasa">{{ formatRate(s.tcea ?? s.Tcea) }}</td>
+            <td class="col-tasa">{{ Number((s.tcea ?? s.Tcea) * 100).toFixed(2) }}%</td>
             <td class="col-actions">
+              <button
+                @click.stop="editarSimulacion(s)"
+                class="btn-editar"
+                title="Editar Simulación"
+              >
+                ✏️ Editar
+              </button>
               <button
                 @click.stop="descargarPDF(s)"
                 class="btn-pdf"
                 title="Descargar Informe Oficial en PDF"
               >
-                📄 Informe Oficial
+                📄 PDF
+              </button>
+              <button
+                @click.stop="confirmarEliminacion(s.simulacionId)"
+                title="Eliminar Simulación"
+                style="background-color: transparent; border: none; color: #ef4444; font-size: 1.5rem; font-weight: bold; padding: 0 0.5rem; cursor: pointer; line-height: 1;"
+              >
+                &times;
               </button>
             </td>
           </tr>
@@ -549,6 +583,28 @@ onMounted(() => {
 
 .col-actions {
   text-align: center;
+  white-space: nowrap;
+}
+
+.btn-editar {
+  background-color: var(--panel-bg, #ffffff);
+  color: var(--primary, #0369a1);
+  border: 2px solid var(--primary, #0369a1);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.btn-editar:hover {
+  background-color: var(--primary, #0369a1);
+  color: var(--panel-bg, #ffffff);
 }
 
 .btn-pdf {

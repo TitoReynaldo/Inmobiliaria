@@ -53,26 +53,36 @@ namespace Inmobiliaria.API.Services
 
             resultado.TEA = (decimal)Math.Round(tea, 15);
 
-            double tem = Math.Pow(1 + tea, (double)diasPorPeriodo / diasPorAnio) - 1;
+            double tep = Math.Pow(1 + tea, (double)(diasPorPeriodo * input.MesesPorCuota) / diasPorAnio) - 1;
 
             double tasaDesgravamen = (double)(input.SeguroDesgravamenMensual / 100m);
             double montoSeguroRiesgo = (double)(input.ValorTasacion * (input.SeguroRiesgoMensual / 100m));
             double dPortes = (double)input.Portes;
             double dGastosAdmin = (double)input.GastosAdministracion;
 
-            int totalCuotas = input.PlazoMeses > 0 ? input.PlazoMeses : input.PlazoAnios * 12;
+            int mesesTotales = input.PlazoMeses > 0 ? input.PlazoMeses : input.PlazoAnios * 12;
+            int totalCuotas = (int)Math.Ceiling((double)mesesTotales / input.MesesPorCuota);
 
-            if (input.TipoGracia != "Sin Gracia" && input.MesesGracia >= totalCuotas)
+            if (input.TipoGracia != "Sin Gracia" && input.PeriodosGracia >= totalCuotas)
             {
-                throw new InvalidOperationException($"El periodo de gracia ({input.MesesGracia} meses) no puede ser mayor o igual al plazo total del crédito ({totalCuotas} meses).");
+                throw new InvalidOperationException($"El periodo de gracia ({input.PeriodosGracia} periodos) no puede ser mayor o igual al plazo total del crédito ({totalCuotas} cuotas).");
+            }
+
+            int mesesGraciaReales = input.PeriodosGracia * input.MesesPorCuota;
+            int limiteMeses = (input.AplicaBonoBuenPagador || input.AplicaBonoVerde || input.AplicaTechoPropio) ? 12 : 6;
+            
+            if (mesesGraciaReales > limiteMeses)
+            {
+                resultado.AdvertenciaRiesgo = $"ALERTA DE RIESGO COMERCIAL: El periodo de gracia solicitado ({mesesGraciaReales} meses) excede el límite máximo estándar permitido por políticas bancarias ({limiteMeses} meses). La simulación es matemáticamente válida, pero requiere aprobación de comité de riesgos.";
             }
 
             resultado.Cronograma = GenerarCronogramaFrances(
-                montoPrestamo, tem,
+                montoPrestamo, tep,
                 totalCuotas,
-                input.TipoGracia, input.MesesGracia,
+                input.TipoGracia, input.PeriodosGracia,
                 tasaDesgravamen, montoSeguroRiesgo, dPortes, dGastosAdmin,
-                input.PagosAnticipados, input.TipoPrepago
+                input.PagosAnticipados, input.TipoPrepago,
+                input.IncrementoTasaFutura, input.CuotaInicioAjuste, input.MesesPorCuota
             );
 
             if (resultado.Cronograma.Any()) {
@@ -199,13 +209,14 @@ namespace Inmobiliaria.API.Services
 
         private List<DetalleCronogramaDto> GenerarCronogramaFrances(
             double saldoCapital, double tasaMensual, int totalCuotas, string tipoGracia,
-            int mesesGracia, double tasaDesgravamen, double montoSeguroRiesgo,
-            double portes, double gastosAdmin, Dictionary<int, decimal>? pagosAnticipados, string tipoPrepago)
+            int periodosGracia, double tasaDesgravamen, double montoSeguroRiesgo,
+            double portes, double gastosAdmin, Dictionary<int, decimal>? pagosAnticipados, string tipoPrepago,
+            decimal incrementoTasaFutura, int cuotaInicioAjuste, int mesesPorCuota)
         {
             var cronograma = new List<DetalleCronogramaDto>();
             double saldoInicialPeriodo = saldoCapital;
 
-            for (int i = 1; i <= mesesGracia; i++)
+            for (int i = 1; i <= periodosGracia; i++)
             {
                 double interes = saldoInicialPeriodo * tasaMensual;
                 double segDesgravamen = saldoInicialPeriodo * tasaDesgravamen;
@@ -238,7 +249,7 @@ namespace Inmobiliaria.API.Services
                 });
             }
 
-            int cuotasRestantes = totalCuotas - mesesGracia;
+            int cuotasRestantes = totalCuotas - periodosGracia;
             if (cuotasRestantes > 0)
             {
                 double cuotaFijaR = saldoInicialPeriodo * (Math.Pow(1 + tasaMensual, cuotasRestantes) * tasaMensual)
@@ -246,7 +257,20 @@ namespace Inmobiliaria.API.Services
 
                 for (int i = 1; i <= cuotasRestantes; i++)
                 {
-                    int nroCuota = i + mesesGracia;
+                    int nroCuota = i + periodosGracia;
+
+                    if (cuotaInicioAjuste > 0 && nroCuota == cuotaInicioAjuste && incrementoTasaFutura > 0)
+                    {
+                        double incrementoPeriodo = (double)incrementoTasaFutura / 100.0 / 12.0 * mesesPorCuota;
+                        tasaMensual += incrementoPeriodo;
+                        int periodosRestantesAjuste = cuotasRestantes - i + 1;
+                        if (periodosRestantesAjuste > 0)
+                        {
+                            cuotaFijaR = saldoInicialPeriodo * (Math.Pow(1 + tasaMensual, periodosRestantesAjuste) * tasaMensual)
+                                         / (Math.Pow(1 + tasaMensual, periodosRestantesAjuste) - 1);
+                        }
+                    }
+
                     double interes = saldoInicialPeriodo * tasaMensual;
                     double amortizacion = cuotaFijaR - interes;
                     double segDesgravamen = saldoInicialPeriodo * tasaDesgravamen;

@@ -86,7 +86,7 @@ namespace Inmobiliaria.API.Controllers
                     MontoPrestamo = input.PrecioVivienda - input.CuotaInicial,
                     PlazoMeses = input.PlazoMeses > 0 ? input.PlazoMeses : input.PlazoAnios * 12,
                     TipoGracia = input.TipoGracia,
-                    MesesGracia = input.MesesGracia,
+                    MesesGracia = input.PeriodosGracia,
                     TasaEfectivaAnual = resultado.TEA,
                     Tcea = resultado.TCEA,
                     Van = resultado.VAN,
@@ -108,7 +108,7 @@ namespace Inmobiliaria.API.Controllers
                     Amortizacion = d.Amortizacion,
                     Cuota = d.Amortizacion + d.Interes,
                     SeguroDesgravamen = d.SegDesgravamen,
-                    SeguroInmueble = d.SeguroRiesgo, // Corrected mapping
+                    SeguroInmueble = d.SeguroRiesgo,
                     CuotaTotal = d.CuotaTotal,
                     SaldoFinal = d.SaldoFinal
                 }).ToList();
@@ -144,7 +144,7 @@ namespace Inmobiliaria.API.Controllers
             {
                 return Unauthorized("Token inválido.");
             }
-
+            //TRAS
             var cliente = await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
             if (cliente == null)
             {
@@ -169,6 +169,36 @@ namespace Inmobiliaria.API.Controllers
                 .ToListAsync();
 
             return Ok(historial);
+        }
+
+        [HttpDelete("eliminar/{id}")]
+        public async Task<IActionResult> EliminarSimulacion(int id)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int usuarioId))
+            {
+                return Unauthorized("Token inválido.");
+            }
+
+            var cliente = await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
+            if (cliente == null)
+            {
+                return NotFound("Cliente no encontrado.");
+            }
+
+            var simulacion = await _context.Simulaciones.FindAsync(id);
+            if (simulacion == null || simulacion.ClienteId != cliente.ClienteId)
+            {
+                return NotFound("Simulación no encontrada o acceso denegado.");
+            }
+
+            var detalles = _context.Detallecronogramas.Where(d => d.SimulacionId == id);
+            _context.Detallecronogramas.RemoveRange(detalles);
+            
+            _context.Simulaciones.Remove(simulacion);
+            
+            await _context.SaveChangesAsync();
+            return Ok();
         }
     }
 }

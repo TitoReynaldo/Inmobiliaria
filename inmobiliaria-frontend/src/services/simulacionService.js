@@ -8,4 +8,8 @@ export const SimulacionService = {
   obtenerHistorial() {
     return api.get('/simulaciones/historial')
   },
+
+  eliminarSimulacion(id) {
+    return api.delete(`/simulaciones/eliminar/${id}`)
+  }
 }

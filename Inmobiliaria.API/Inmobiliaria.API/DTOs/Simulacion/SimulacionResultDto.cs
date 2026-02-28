@@ -17,6 +17,7 @@ namespace Inmobiliaria.API.DTOs.Simulacion
         public decimal TotalSeguros { get; set; }
         public decimal TotalPortes { get; set; }
         public decimal TotalGastosAdmin { get; set; }
+        public string AdvertenciaRiesgo { get; set; } = string.Empty;
 
         public List<DetalleCronogramaDto> Cronograma { get; set; } = new List<DetalleCronogramaDto>();
     }
