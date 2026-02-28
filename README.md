@@ -16,6 +16,10 @@ Sistema Fullstack de simulación financiera hipotecaria basado en el Método de 
 * **Periodos de Gracia:** Soporte paramétrico para configuración de Gracia Total o Gracia Parcial.
 * **Gestión de Subsidios:** Evaluación y aplicación automática de Bono Verde y Bono del Buen Pagador basados en rangos de tasación.
 * **Auditoría Criptográfica:** Trazabilidad de cada simulación vinculada a la sesión del usuario.
+* **Amortizaciones Extraordinarias y Pagos Anticipados:** * El sistema permite la inyección de capital extraordinario en cualquier periodo del cronograma, reduciendo el saldo deudor de forma inmediata.
+* **Reducción de Cuota:** El motor ejecuta un recálculo dinámico de la anualidad (R) manteniendo el plazo original, lo que disminuye la carga financiera mensual del cliente.
+* **Reducción de Plazo:** El algoritmo mantiene la cuota constante pero liquida el capital más rápido, recalculando la fecha de término del crédito y generando un ahorro significativo en intereses totales.
+* **Cierre Automático:** Validación lógica que detecta si el pago extraordinario cubre la totalidad de la deuda, forzando un cierre en cero exacto y finalizando el cronograma de forma automática.
 
 ##  Guía de Despliegue Local
 
